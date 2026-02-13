@@ -31,10 +31,11 @@ jobs:
             const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Main')
 
             // export useful values for later steps (avoid relying on event payload)
+            // Use the PR head SHA for downstream cherry-picks — the API's merge_commit_sha may be a merge commit
             core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
             core.setOutput('pr_number', String(pr.number || ''))
             core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
-            core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
+            core.setOutput('merge_commit_sha', (pr.head && pr.head.sha) ? pr.head.sha : (pr.merge_commit_sha || ''))
 
       - name: Checkout `main`
         if: steps.check_pr.outputs.proceed == 'true'
@@ -126,10 +127,11 @@ jobs:
             const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Qa')
 
             // export useful values for later steps
+            // Use the PR head SHA for downstream cherry-picks — the API's merge_commit_sha may be a merge commit
             core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
             core.setOutput('pr_number', String(pr.number || ''))
             core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
-            core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
+            core.setOutput('merge_commit_sha', (pr.head && pr.head.sha) ? pr.head.sha : (pr.merge_commit_sha || ''))
 
       - name: Checkout `qa`
         if: steps.check_pr.outputs.proceed == 'true'
