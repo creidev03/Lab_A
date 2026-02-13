@@ -16,5 +16,17 @@
         "file1.txt",
         "file2.txt",
         "file3.txt"
+    ],
+    "comments": [
+        {
+            "user": "Alice",
+            "comment": "This is a comment on the test file.",
+            "timestamp": "2023-11-15T12:30:00Z"
+        },
+        {
+            "user": "Bob",
+            "comment": "Another comment on the test file.",
+            "timestamp": "2023-11-15T13:00:00Z"
+        }
     ]
 }
