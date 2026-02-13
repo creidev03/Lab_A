@@ -67,13 +67,8 @@ jobs:
             exit 1
           fi
 
-          # apply the exact merged commit onto the promotion branch (preserve original commit message)
-          # if the commit is already present on this branch, skip to avoid an "empty" cherry-pick failure
-          if git merge-base --is-ancestor $MERGE_SHA HEAD 2>/dev/null; then
-            echo "Commit $MERGE_SHA already present on branch — skipping cherry-pick"
-          else
-            git cherry-pick -x $MERGE_SHA
-          fi
+          # merge the exact commit that was merged into dev (use value from API output)
+          git merge $MERGE_SHA --no-ff -m "Promoting PR #$PR_NUMBER to main (automatic)"
 
           # push branch using token
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} $BRANCH_NAME -q
@@ -91,8 +86,8 @@ jobs:
           git checkout main
           git reset --hard origin/main
 
-          # fast-forward main to the promotion branch to avoid a merge commit
-          git merge --ff-only $BRANCH_NAME || (echo "FF-only merge failed" && exit 1)
+          # merge the promotion branch that contains the exact commit from `dev`
+          git merge --no-ff $BRANCH_NAME -m "Promoting PR #$PR_NUMBER to main (automatic)"
 
           # push merged main back to remote
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} main -q
@@ -169,13 +164,8 @@ jobs:
             exit 1
           fi
 
-          # cherry-pick the exact merged commit so we don't create a "Promoting PR" merge commit
-          # skip if the commit is already contained in `qa` (prevents empty cherry-pick failures)
-          if git merge-base --is-ancestor $MERGE_SHA HEAD 2>/dev/null; then
-            echo "Commit $MERGE_SHA already present on qa — skipping cherry-pick"
-          else
-            git cherry-pick -x $MERGE_SHA
-          fi
+          # merge the exact commit that was merged into dev
+          git merge $MERGE_SHA --no-ff -m "Promoting PR #$PR_NUMBER to qa (automatic)"
 
           # push merged qa back to remote
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} qa -q
