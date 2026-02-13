@@ -1,8 +1,8 @@
-name: Promote from dev on merge
+name: Promote from dev to Qa 
 
 on:
   pull_request:
-    types: [closed, labeled]
+    types: [labeled]
 
 permissions:
   contents: write
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   promote-to-qa:
-    if: (github.event.action == 'closed' && github.event.pull_request.base.ref == 'dev' && github.event.pull_request.merged == true && contains(join(github.event.pull_request.labels.*.name, ','), 'Qa')) || (github.event.action == 'labeled' && github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Qa')
+    if: github.event.action == 'labeled' && github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Qa'
     runs-on: ubuntu-latest
     steps:
       - name: Verify PR is merged, base=dev and has `Qa` label
