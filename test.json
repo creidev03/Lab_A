@@ -1,3 +1,9 @@
 {
-    "test": "This is a test file to track recently edited files in the Lab_A repository. It does not contain any code or meaningful content, but serves as a placeholder to demonstrate the tracking of changes in the repository."
+    "test": "This is a test file to track recently edited files in the Lab_A repository. It does not contain any code or meaningful content, but serves as a placeholder to demonstrate the tracking of changes in the repository.",
+    "author": "John Doe",
+    "date": "2023-11-15",
+    "version": "1.0",
+    "description": "This file is used to track recently edited files in the Lab_A repository.",
+    "tags": ["test", "tracking", "repository"],
+    "content": "This file is a placeholder and does not contain any meaningful content. It is used to demonstrate the tracking of changes in the Lab_A repository."
 }
