@@ -1,0 +1,98 @@
+name: Promote from dev on merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote-to-main:
+    if: github.event.pull_request.base.ref == 'dev' && github.event.pull_request.merged == true && contains(join(github.event.pull_request.labels.*.name, ','), 'Main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout `main`
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config user.name "Lab[bot]"
+          git config user.email "creidev03@gmail.com"
+
+      - name: Create promotion branch + merge approved changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          BRANCH_NAME="release-from-pr-$PR_NUMBER-to-main"
+
+          git checkout -b $BRANCH_NAME
+
+          # merge the exact commit that was merged into dev
+          git merge ${{ github.event.pull_request.merge_commit_sha }} --no-ff -m "Promoting PR #$PR_NUMBER to main (automatic)"
+
+          # push branch using token
+          git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} $BRANCH_NAME -q
+
+      - name: Create pull request to `main`
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          BRANCH_NAME="release-from-pr-$PR_NUMBER-to-main"
+
+          gh pr create \
+            --base main \
+            --head $BRANCH_NAME \
+            --title "INTEGRACION: ${{ github.event.pull_request.title }}" \
+            --body "Este PR fue generado automáticamente tras la aprobación de QA en el PR #$PR_NUMBER.\n\n**Autor original:** @${{ github.event.pull_request.user.login }}\n\n**Descripción original:**\n${{ github.event.pull_request.body }}"
+
+  promote-to-qa:
+    if: github.event.pull_request.base.ref == 'dev' && github.event.pull_request.merged == true && contains(join(github.event.pull_request.labels.*.name, ','), 'Qa')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout `qa`
+        uses: actions/checkout@v4
+        with:
+          ref: qa
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config user.name "Lab[bot]"
+          git config user.email "creidev03@gmail.com"
+
+      - name: Merge approved changes directly into `qa` and push (no PR)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+
+          # ensure local qa is synced with remote
+          git fetch origin qa
+          git checkout qa
+          git reset --hard origin/qa
+
+          # merge the exact commit that was merged into dev
+          git merge ${{ github.event.pull_request.merge_commit_sha }} --no-ff -m "Promoting PR #$PR_NUMBER to qa (automatic)"
+
+          # push merged qa back to remote
+          git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} qa -q
+
+      - name: Add comment to original PR (optional visibility)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request.number
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr,
+              body: `✅ Los cambios de este PR fueron empujados directamente a la rama **qa** por la etiqueta **Qa`.`
+            })
