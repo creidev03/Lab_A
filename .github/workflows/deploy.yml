@@ -30,7 +30,11 @@ jobs:
             const baseIsDev = pr.base && pr.base.ref === 'dev'
             const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Main')
 
+            // export useful values for later steps (avoid relying on event payload)
             core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
+            core.setOutput('pr_number', String(pr.number || ''))
+            core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
+            core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
 
       - name: Checkout `main`
         if: steps.check_pr.outputs.proceed == 'true'
@@ -50,13 +54,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_NUMBER=${{ steps.check_pr.outputs.pr_number }}
           BRANCH_NAME="release-from-pr-$PR_NUMBER-to-main"
 
           git checkout -b $BRANCH_NAME
 
-          # merge the exact commit that was merged into dev
-          git merge ${{ github.event.pull_request.merge_commit_sha }} --no-ff -m "Promoting PR #$PR_NUMBER to main (automatic)"
+          # merge the exact commit that was merged into dev (use value from API output)
+          MERGE_SHA=${{ steps.check_pr.outputs.merge_commit_sha }}
+          if [ -z "$MERGE_SHA" ]; then
+            echo "ERROR: merge_commit_sha not available for PR#$PR_NUMBER"
+            exit 1
+          fi
+
+          git merge $MERGE_SHA --no-ff -m "Promoting PR #$PR_NUMBER to main (automatic)"
 
           # push branch using token
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} $BRANCH_NAME -q
@@ -66,13 +76,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_NUMBER=${{ steps.check_pr.outputs.pr_number }}
           BRANCH_NAME="release-from-pr-$PR_NUMBER-to-main"
+          PR_AUTHOR=${{ steps.check_pr.outputs.pr_author }}
 
           BODY=$(cat <<'EOF'
-          Este PR fue generado automáticamente tras la aprobación de QA en el PR #$PR_NUMBER.
+          Este PR fue generado automáticamente tras la aprobación en Dev.
 
-          **Autor original:** @${{ github.event.pull_request.user.login }}
+          **Autor original:** @${PR_AUTHOR}
 
           **Descripción original:**
           ${{ github.event.pull_request.body }}
@@ -105,7 +116,11 @@ jobs:
             const baseIsDev = pr.base && pr.base.ref === 'dev'
             const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Qa')
 
+            // export useful values for later steps
             core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
+            core.setOutput('pr_number', String(pr.number || ''))
+            core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
+            core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
 
       - name: Checkout `qa`
         if: steps.check_pr.outputs.proceed == 'true'
@@ -125,15 +140,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_NUMBER=${{ steps.check_pr.outputs.pr_number }}
 
           # ensure local qa is synced with remote
           git fetch origin qa
           git checkout qa
           git reset --hard origin/qa
 
+          MERGE_SHA=${{ steps.check_pr.outputs.merge_commit_sha }}
+          if [ -z "$MERGE_SHA" ]; then
+            echo "ERROR: merge_commit_sha not available for PR#$PR_NUMBER"
+            exit 1
+          fi
+
           # merge the exact commit that was merged into dev
-          git merge ${{ github.event.pull_request.merge_commit_sha }} --no-ff -m "Promoting PR #$PR_NUMBER to qa (automatic)"
+          git merge $MERGE_SHA --no-ff -m "Promoting PR #$PR_NUMBER to qa (automatic)"
 
           # push merged qa back to remote
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} qa -q
