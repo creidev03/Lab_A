@@ -31,11 +31,10 @@ jobs:
             const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Main')
 
             // export useful values for later steps (avoid relying on event payload)
-            // Use the PR head SHA for downstream cherry-picks — the API's merge_commit_sha may be a merge commit
             core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
             core.setOutput('pr_number', String(pr.number || ''))
             core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
-            core.setOutput('merge_commit_sha', (pr.head && pr.head.sha) ? pr.head.sha : (pr.merge_commit_sha || ''))
+            core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
 
       - name: Checkout `main`
         if: steps.check_pr.outputs.proceed == 'true'
@@ -67,44 +66,35 @@ jobs:
             exit 1
           fi
 
-          # merge the exact commit that was merged into dev (use value from API output)
           git merge $MERGE_SHA --no-ff -m "Promoting PR #$PR_NUMBER to main (automatic)"
 
           # push branch using token
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} $BRANCH_NAME -q
 
-      - name: Merge promotion branch into `main`
+      - name: Create pull request to `main`
         if: steps.check_pr.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER=${{ steps.check_pr.outputs.pr_number }}
           BRANCH_NAME="release-from-pr-$PR_NUMBER-to-main"
+          PR_AUTHOR=${{ steps.check_pr.outputs.pr_author }}
 
-          # ensure local main is synced with remote
-          git fetch origin main
-          git checkout main
-          git reset --hard origin/main
+          BODY=$(cat <<'EOF'
+          Este PR fue generado automáticamente tras la aprobación en Dev.
 
-          # merge the promotion branch that contains the exact commit from `dev`
-          git merge --no-ff $BRANCH_NAME -m "Promoting PR #$PR_NUMBER to main (automatic)"
+          **Autor original:** @${PR_AUTHOR}
 
-          # push merged main back to remote
-          git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} main -q
+          **Descripción original:**
+          ${{ github.event.pull_request.body }}
+          EOF
+          )
 
-      - name: Add comment to original PR (optional visibility)
-        if: steps.check_pr.outputs.proceed == 'true'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const pr = context.payload.pull_request.number
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: pr,
-              body: "✅ Los cambios de este PR fueron empujados directamente a la rama **main** por la etiqueta **Main**."
-            })
+          gh pr create \
+            --base main \
+            --head $BRANCH_NAME \
+            --title "INTEGRACION: ${{ github.event.pull_request.title }}" \
+            --body "$BODY"
   promote-to-qa:
     if: github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Qa'
     runs-on: ubuntu-latest
@@ -127,11 +117,10 @@ jobs:
             const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Qa')
 
             // export useful values for later steps
-            // Use the PR head SHA for downstream cherry-picks — the API's merge_commit_sha may be a merge commit
             core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
             core.setOutput('pr_number', String(pr.number || ''))
             core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
-            core.setOutput('merge_commit_sha', (pr.head && pr.head.sha) ? pr.head.sha : (pr.merge_commit_sha || ''))
+            core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
 
       - name: Checkout `qa`
         if: steps.check_pr.outputs.proceed == 'true'
@@ -181,5 +170,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: pr,
-              body: "✅ Los cambios de este PR fueron empujados directamente a la rama **qa** por la etiqueta **Qa**."
+              body: `✅ Los cambios de este PR fueron empujados directamente a la rama **qa** por la etiqueta **Qa`.`
             })
