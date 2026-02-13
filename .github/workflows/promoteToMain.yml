@@ -2,7 +2,7 @@ name: Promote from dev to main
 
 on:
   pull_request:
-    types: [closed, labeled]
+    types: [labeled]
 
 permissions:
   contents: write

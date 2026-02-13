@@ -2,7 +2,7 @@ name: Promote from dev to Qa
 
 on:
   pull_request:
-    types: [closed, labeled]
+    types: [labeled]
 
 permissions:
   contents: write
