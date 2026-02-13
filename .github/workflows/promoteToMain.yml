@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   promote-to-main:
-    if: github.event.action == 'labeled' && github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Main'
+    if: github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Main'
     runs-on: ubuntu-latest
     steps:
       - name: Verify PR is merged, base=dev and has `Main` label

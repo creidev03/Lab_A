@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   promote-to-qa:
-    if: github.event.action == 'labeled' && github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Qa'
+    if: github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Qa'
     runs-on: ubuntu-latest
     steps:
       - name: Verify PR is merged, base=dev and has `Qa` label
