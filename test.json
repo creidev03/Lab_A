@@ -28,5 +28,17 @@
             "comment": "Another comment on the test file.",
             "timestamp": "2023-11-15T13:00:00Z"
         }
+    ],
+    "history": [
+        {
+            "version": "1.0",
+            "changes": "Initial creation of the test file.",
+            "timestamp": "2023-11-15T12:00:00Z"
+        },
+        {
+            "version": "1.1",
+            "changes": "Updated the description and added metadata.",
+            "timestamp": "2023-11-15T12:30:00Z"
+        }
     ]
 }
