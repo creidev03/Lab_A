@@ -41,5 +41,9 @@
             "timestamp": "2023-11-15T12:30:00Z"
         }
     ],
-    "license": "MIT"
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": ""
+    }
 }
