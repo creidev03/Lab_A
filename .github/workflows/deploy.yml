@@ -53,7 +53,7 @@ jobs:
             --body "Este PR fue generado automáticamente tras la aprobación de QA en el PR #$PR_NUMBER.\n\n**Autor original:** @${{ github.event.pull_request.user.login }}\n\n**Descripción original:**\n${{ github.event.pull_request.body }}"
 
   promote-to-qa:
-    if: github.event.pull_request.base.ref == 'dev' && github.event.pull_request.merged == true && contains(join(github.event.pull_request.labels.*.name, ','), 'Qa')
+    if: github.event.pull_request.base.ref == 'dev' && contains(join(github.event.pull_request.labels.*.name, ','), 'Qa')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout `qa`
