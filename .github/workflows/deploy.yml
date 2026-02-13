@@ -68,7 +68,12 @@ jobs:
           fi
 
           # apply the exact merged commit onto the promotion branch (preserve original commit message)
-          git cherry-pick -x $MERGE_SHA
+          # if the commit is already present on this branch, skip to avoid an "empty" cherry-pick failure
+          if git merge-base --is-ancestor $MERGE_SHA HEAD 2>/dev/null; then
+            echo "Commit $MERGE_SHA already present on branch — skipping cherry-pick"
+          else
+            git cherry-pick -x $MERGE_SHA
+          fi
 
           # push branch using token
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} $BRANCH_NAME -q
@@ -165,7 +170,12 @@ jobs:
           fi
 
           # cherry-pick the exact merged commit so we don't create a "Promoting PR" merge commit
-          git cherry-pick -x $MERGE_SHA
+          # skip if the commit is already contained in `qa` (prevents empty cherry-pick failures)
+          if git merge-base --is-ancestor $MERGE_SHA HEAD 2>/dev/null; then
+            echo "Commit $MERGE_SHA already present on qa — skipping cherry-pick"
+          else
+            git cherry-pick -x $MERGE_SHA
+          fi
 
           # push merged qa back to remote
           git push https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }} qa -q
