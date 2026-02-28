@@ -173,11 +173,10 @@ jobs:
               body: `✅ Los cambios de este PR fueron empujados directamente a la rama **qa** por la etiqueta **Qa**.`
             })
   promote-to-lab-b:
-    # Se ejecuta si la base es 'dev' y la etiqueta es 'Deploy-LabB'
     if: github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Deploy-LabB'
     runs-on: ubuntu-latest
     steps:
-      - name: Verify PR is merged, base=dev and has `Deploy-LabB` label
+      - name: Verify PR data
         id: check_pr
         uses: actions/github-script@v7
         with:
@@ -190,6 +189,7 @@ jobs:
               pull_number: prNumber
             })
 
+            // Validar condiciones y extraer datos
             const isMerged = pr.merged === true
             const baseIsDev = pr.base && pr.base.ref === 'dev'
             const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Deploy-LabB')
@@ -197,9 +197,11 @@ jobs:
             core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
             core.setOutput('pr_number', String(pr.number || ''))
             core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
+            core.setOutput('pr_title', pr.title || '')
+            core.setOutput('pr_body', pr.body || '')
             core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
 
-      # 1. Bajamos el código FUENTE (Lab_A) en el estado exacto del merge
+      # 1. Bajamos el código FUENTE (Lab_A)
       - name: Checkout Source (Lab_A)
         if: steps.check_pr.outputs.proceed == 'true'
         uses: actions/checkout@v4
@@ -214,52 +216,91 @@ jobs:
         with:
           repository: creidev03/Lab_B
           ref: main
-          # AQUÍ ES IMPORTANTE EL PAT PARA PODER HACER PUSH DESPUÉS
-          token: ${{ secrets.API_TOKEN_LAB_B }} 
+          token: ${{ secrets.API_TOKEN_LAB_B }}
           path: dest_repo
 
-      - name: Sync changes and Push to Lab_B
+      # 3. Crear rama en B, Sincronizar y Empujar
+      - name: Sync changes and Push Branch to Lab_B
         if: steps.check_pr.outputs.proceed == 'true'
+        id: push_step
         run: |
           PR_NUMBER=${{ steps.check_pr.outputs.pr_number }}
           AUTHOR=${{ steps.check_pr.outputs.pr_author }}
+          
+          # Nombre de la rama que crearemos en Lab_B
+          BRANCH_NAME="sync/from-lab-a-pr-$PR_NUMBER"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
-          # Configurar Git en el directorio de destino
+          # Preparar Repo B
           cd dest_repo
           git config user.name "Lab[bot]"
           git config user.email "creidev03@gmail.com"
 
-          echo "Sincronizando archivos desde Lab_A hacia Lab_B..."
+          # Crear nueva rama basada en main actual de B
+          git checkout -b $BRANCH_NAME
 
-          # Usamos rsync para copiar los archivos de source a dest
-          # --delete: Borra archivos en B si fueron borrados en A
-          # --exclude: Evitamos copiar la carpeta .git y .github (para no sobrescribir workflows de B)
+          echo "Sincronizando archivos desde Lab_A hacia Lab_B..."
+          
+          # Copiar archivos excluyendo configuraciones de git y workflows de github
           rsync -av --delete --exclude='.git' --exclude='.github' ../source_repo/ .
 
-          # Verificar si hay cambios
+          # Verificar cambios
           if [ -z "$(git status --porcelain)" ]; then 
-            echo "No hay cambios para empujar a Lab_B"
+            echo "No hay cambios para empujar."
+            echo "has_changes=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
           git add .
-          git commit -m "Sync from Lab_A PR #$PR_NUMBER by @$AUTHOR"
+          git commit -m "Sync: Cambios provenientes de Lab_A PR #$PR_NUMBER"
 
-          # Empujar cambios a Lab_B (usa el token configurado en el checkout)
-          git push origin main
+          # Empujar la rama al remote de Lab_B
+          git push origin $BRANCH_NAME
+
+      # 4. Crear el PR en Lab_B usando GitHub CLI
+      - name: Create Pull Request in Lab_B
+        if: steps.check_pr.outputs.proceed == 'true' && steps.push_step.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.API_TOKEN_LAB_B }} # IMPORTANTE: Usar el PAT aquí
+        run: |
+          PR_NUMBER=${{ steps.check_pr.outputs.pr_number }}
+          AUTHOR=${{ steps.check_pr.outputs.pr_author }}
+          TITLE="${{ steps.check_pr.outputs.pr_title }}"
+          BRANCH_NAME="${{ steps.push_step.outputs.branch_name }}"
           
-          echo "✅ Cambios desplegados exitosamente en Lab_B"
+          # Construir el cuerpo del PR
+          BODY=$(cat <<EOF
+          ## Sincronización Automática desde Lab_A
+          
+          Este PR contiene los cambios aprobados en el PR #$PR_NUMBER de Lab_A.
+          
+          **Autor original:** @$AUTHOR
+          **PR Origen:** Lab_A#$PR_NUMBER
+          
+          **Descripción original:**
+          ${{ steps.check_pr.outputs.pr_body }}
+          EOF
+          )
 
-      - name: Comment on Original PR
-        if: steps.check_pr.outputs.proceed == 'true'
+          # Crear PR apuntando al repo remoto explícitamente (--repo)
+          gh pr create \
+            --repo creidev03/Lab_B \
+            --base main \
+            --head $BRANCH_NAME \
+            --title "[SYNC] $TITLE" \
+            --body "$BODY"
+
+      - name: Comment on Original PR (Lab_A)
+        if: steps.check_pr.outputs.proceed == 'true' && steps.push_step.outputs.has_changes == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const pr = context.payload.pull_request.number
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: pr,
-              body: `🚀 Los cambios han sido sincronizados y enviados a la rama **main** del repositorio **Lab_B**.`
+              issue_number: context.payload.pull_request.number,
+              body: `✅ Se ha abierto un Pull Request en **Lab_B** con estos cambios para su revisión.`
             })
