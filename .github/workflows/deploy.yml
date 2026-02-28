@@ -170,5 +170,96 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: pr,
-              body: `✅ Los cambios de este PR fueron empujados directamente a la rama **qa** por la etiqueta **Qa`.`
+              body: `✅ Los cambios de este PR fueron empujados directamente a la rama **qa** por la etiqueta **Qa**.`
+            })
+  promote-to-lab-b:
+    # Se ejecuta si la base es 'dev' y la etiqueta es 'Deploy-LabB'
+    if: github.event.pull_request.base.ref == 'dev' && github.event.label.name == 'Deploy-LabB'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify PR is merged, base=dev and has `Deploy-LabB` label
+        id: check_pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = context.payload.pull_request.number
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            })
+
+            const isMerged = pr.merged === true
+            const baseIsDev = pr.base && pr.base.ref === 'dev'
+            const hasLabel = Array.isArray(pr.labels) && pr.labels.some(l => l.name === 'Deploy-LabB')
+
+            core.setOutput('proceed', isMerged && baseIsDev && hasLabel ? 'true' : 'false')
+            core.setOutput('pr_number', String(pr.number || ''))
+            core.setOutput('pr_author', pr.user && pr.user.login ? pr.user.login : '')
+            core.setOutput('merge_commit_sha', pr.merge_commit_sha || '')
+
+      # 1. Bajamos el código FUENTE (Lab_A) en el estado exacto del merge
+      - name: Checkout Source (Lab_A)
+        if: steps.check_pr.outputs.proceed == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.check_pr.outputs.merge_commit_sha }}
+          path: source_repo
+
+      # 2. Bajamos el código DESTINO (Lab_B) usando el PAT
+      - name: Checkout Destination (Lab_B)
+        if: steps.check_pr.outputs.proceed == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: creidev03/Lab_B
+          ref: main
+          # AQUÍ ES IMPORTANTE EL PAT PARA PODER HACER PUSH DESPUÉS
+          token: ${{ secrets.API_TOKEN_LAB_B }} 
+          path: dest_repo
+
+      - name: Sync changes and Push to Lab_B
+        if: steps.check_pr.outputs.proceed == 'true'
+        run: |
+          PR_NUMBER=${{ steps.check_pr.outputs.pr_number }}
+          AUTHOR=${{ steps.check_pr.outputs.pr_author }}
+
+          # Configurar Git en el directorio de destino
+          cd dest_repo
+          git config user.name "Lab[bot]"
+          git config user.email "creidev03@gmail.com"
+
+          echo "Sincronizando archivos desde Lab_A hacia Lab_B..."
+
+          # Usamos rsync para copiar los archivos de source a dest
+          # --delete: Borra archivos en B si fueron borrados en A
+          # --exclude: Evitamos copiar la carpeta .git y .github (para no sobrescribir workflows de B)
+          rsync -av --delete --exclude='.git' --exclude='.github' ../source_repo/ .
+
+          # Verificar si hay cambios
+          if [ -z "$(git status --porcelain)" ]; then 
+            echo "No hay cambios para empujar a Lab_B"
+            exit 0
+          fi
+
+          git add .
+          git commit -m "Sync from Lab_A PR #$PR_NUMBER by @$AUTHOR"
+
+          # Empujar cambios a Lab_B (usa el token configurado en el checkout)
+          git push origin main
+          
+          echo "✅ Cambios desplegados exitosamente en Lab_B"
+
+      - name: Comment on Original PR
+        if: steps.check_pr.outputs.proceed == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request.number
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr,
+              body: `🚀 Los cambios han sido sincronizados y enviados a la rama **main** del repositorio **Lab_B**.`
             })
